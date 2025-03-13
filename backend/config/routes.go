@@ -3,6 +3,7 @@ package config
 import (
 	"FreightMaster/backend"
 	"FreightMaster/backend/database"
+	"FreightMaster/backend/database/models"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"net/http"
@@ -10,70 +11,20 @@ import (
 )
 
 func SetupRoutes(r *gin.Engine, db *gorm.DB) {
-	for _, route := range r.Routes() {
-		println("Маршрут:", route.Method, route.Path)
-	}
-
+	// Основные маршруты shipments
 	shipments := r.Group("/shipments")
 	{
-		shipments.GET("/", func(c *gin.Context) {
-			var shipments []database.Shipment
-			if err := db.Find(&shipments).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при получении отправлений"})
-				return
-			}
-			c.JSON(http.StatusOK, shipments)
-		})
-
-		shipments.GET("/:id", func(c *gin.Context) {
-			var shipment database.Shipment
-			id, err := strconv.Atoi(c.Param("id"))
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID"})
-				return
-			}
-			if err := db.First(&shipment, id).Error; err != nil {
-				if err == gorm.ErrRecordNotFound {
-					c.JSON(http.StatusNotFound, gin.H{"error": "Отправление не найдено"})
-				} else {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка базы данных"})
-				}
-				return
-			}
-			c.JSON(http.StatusOK, shipment)
-		})
-
-		shipments.POST("/", func(c *gin.Context) {
-			var shipment database.Shipment
-			if err := c.ShouldBindJSON(&shipment); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный JSON"})
-				return
-			}
-			if err := db.Create(&shipment).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка создания отправления"})
-				return
-			}
-			c.JSON(http.StatusCreated, shipment)
-		})
-
-		shipments.DELETE("/:id", func(c *gin.Context) {
-			id, err := strconv.Atoi(c.Param("id"))
-			if err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный ID"})
-				return
-			}
-			if err := db.Delete(&database.Shipment{}, id).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка удаления"})
-				return
-			}
-			c.JSON(http.StatusOK, gin.H{"message": "Отправление удалено"})
-		})
+		shipments.GET("", models.GetAllShipmentsHandler)
+		shipments.POST("", models.CreateShipmentHandler)
+		shipments.GET("/:id", models.GetShipmentByIDHandler)
+		shipments.PUT("/:id", models.UpdateShipmentHandler)
+		shipments.DELETE("/:id", models.DeleteShipmentHandler)
 	}
 
 	// Маршруты пользователей
 	users := r.Group("/users")
 	{
-		users.GET("/", func(c *gin.Context) {
+		users.GET("", func(c *gin.Context) {
 			var users []database.User
 			if err := db.Find(&users).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения пользователей"})
@@ -100,7 +51,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 			c.JSON(http.StatusOK, user)
 		})
 
-		users.POST("/", func(c *gin.Context) {
+		users.POST("", func(c *gin.Context) {
 			var user database.User
 			if err := c.ShouldBindJSON(&user); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Некорректный JSON"})
@@ -127,13 +78,13 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		})
 	}
 
-	// Вынесенные маршруты авторизации
+	// Маршруты авторизации
 	r.POST("/register", backend.Register)
 	r.POST("/login", backend.Login)
 
 	// Фильтрация отправлений
-	r.GET("/shipments", func(c *gin.Context) {
-		status := c.Query("status") // Фильтр по статусу
+	r.GET("/shipments/filter", func(c *gin.Context) {
+		status := c.Query("status")
 
 		var shipments []database.Shipment
 		query := db
