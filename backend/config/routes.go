@@ -1,7 +1,7 @@
 package config
 
 import (
-	"FreightMaster/backend/database/models"
+	"FreightMaster/backend/database"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 	"net/http"
@@ -11,7 +11,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 	shipments := r.Group("/shipments")
 	{
 		shipments.GET("/", func(c *gin.Context) {
-			var shipments []models.Shipment
+			var shipments []database.Shipment
 			if err := db.Find(&shipments).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось загрузить список отправлений"})
 				return
@@ -21,7 +21,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 
 		// Получение одного отправления
 		shipments.GET("/:id", func(c *gin.Context) {
-			var shipment models.Shipment
+			var shipment database.Shipment
 			id := c.Param("id")
 			if err := db.First(&shipment, id).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Отправление не найдено"})
@@ -32,7 +32,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 
 		// Создание нового отправления
 		shipments.POST("/", func(c *gin.Context) {
-			var shipment models.Shipment
+			var shipment database.Shipment
 			if err := c.ShouldBindJSON(&shipment); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат JSON"})
 				return
@@ -47,14 +47,14 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 		// Обновление отправления
 		shipments.PUT("/:id", func(c *gin.Context) {
 			id := c.Param("id")
-			var shipment models.Shipment
+			var shipment database.Shipment
 			if err := db.First(&shipment, id).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Отправление не найдено"})
 				return
 			}
 
 			// Создаем новую структуру для обновления
-			var updatedShipment models.Shipment
+			var updatedShipment database.Shipment
 			if err := c.ShouldBindJSON(&updatedShipment); err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат JSON"})
 				return
@@ -68,7 +68,7 @@ func SetupRoutes(r *gin.Engine, db *gorm.DB) {
 
 		shipments.DELETE("/:id", func(c *gin.Context) {
 			id := c.Param("id")
-			var shipment models.Shipment
+			var shipment database.Shipment
 			if err := db.First(&shipment, id).Error; err != nil {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Отправление не найдено"})
 				return

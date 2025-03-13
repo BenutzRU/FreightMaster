@@ -1,6 +1,7 @@
 package config
 
 import (
+	"FreightMaster/backend/database"
 	"fmt"
 	"log"
 
@@ -19,8 +20,7 @@ func ConnectDatabase() *gorm.DB {
 
 	fmt.Println("Подключено к базе данных!")
 
-	// Можно добавить миграции (раскомментировать при необходимости)
-	// db.AutoMigrate(&models.Shipment{})
+	db.AutoMigrate(&database.Shipment{})
 
 	return db
 }

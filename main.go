@@ -2,7 +2,7 @@ package main
 
 import (
 	"FreightMaster/backend/config"
-	"fmt"
+	"FreightMaster/backend/database"
 	"log"
 
 	"github.com/gin-gonic/gin"
@@ -10,19 +10,21 @@ import (
 
 func main() {
 	// Инициализация базы данных
-	db := config.ConnectDatabase() // ✅ Теперь правильно вызывается из config
-
+	db := config.ConnectDatabase()
 	if db == nil {
 		log.Fatal("Не удалось подключиться к базе данных")
 	}
 
-	fmt.Println("✅ Подключение к базе данных успешно")
+	log.Println("✅ Подключение к базе данных успешно")
 
-	// Создаем маршрутизатор Gin
+	// Выполняем миграции
+	db.AutoMigrate(&database.User{}, &database.Shipment{}) // Теперь обе модели в database
+
+	// Создаем маршрутизатор
 	r := gin.Default()
 
 	// Инициализация маршрутов
-	config.SetupRoutes(r, db) // ✅ Передаем Gin и базу данных
+	config.SetupRoutes(r, db)
 
 	// Запуск сервера
 	r.Run(":8080")

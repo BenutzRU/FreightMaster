@@ -7,7 +7,9 @@ type User struct {
 }
 
 type Shipment struct {
-	ID       uint   `gorm:"primaryKey"`
-	Tracking string `gorm:"unique"`
-	Status   string
+	ID          uint   `gorm:"primaryKey"`
+	Tracking    string `gorm:"unique"`
+	Status      string
+	OrderNumber string `gorm:"type:varchar(100);not null;unique" json:"order_number"`
+	Destination string `gorm:"size:255" json:"destination"`
 }
