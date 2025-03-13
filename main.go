@@ -9,18 +9,19 @@ import (
 )
 
 func main() {
-	// Инициализация базы данных
-	db := config.ConnectDatabase()
+	// Подключение к базе данных
+	database.ConnectDatabase()
+	db := database.DB
 	if db == nil {
 		log.Fatal("Не удалось подключиться к базе данных")
 	}
 
 	log.Println("✅ Подключение к базе данных успешно")
 
-	// Выполняем миграции
-	db.AutoMigrate(&database.User{}, &database.Shipment{}) // Теперь обе модели в database
+	// Автоматическая миграция моделей
+	db.AutoMigrate(&database.User{}, &database.Shipment{})
 
-	// Создаем маршрутизатор
+	// Создание маршрутизатора
 	r := gin.Default()
 
 	// Инициализация маршрутов

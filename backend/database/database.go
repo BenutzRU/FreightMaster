@@ -17,5 +17,9 @@ func ConnectDatabase() {
 	}
 
 	DB = db
+	if DB == nil {
+		log.Fatal("❌ DB is nil after initialization!")
+	}
+
 	fmt.Println("Database connected!")
 }
