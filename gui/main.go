@@ -1,8 +1,7 @@
-// gui/main.go
 package main
 
 import (
-	"FreightMaster/backend/database" // Импортируем для типов
+	"FreightMaster/backend/database"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -12,7 +11,13 @@ import (
 	"fyne.io/fyne/v2/widget"
 	"io"
 	"net/http"
+	"runtime/debug"
+	"time"
 )
+
+var httpClient = &http.Client{
+	Timeout: 10 * time.Second,
+}
 
 type AuthRequest struct {
 	Username string `json:"username"`
@@ -20,15 +25,19 @@ type AuthRequest struct {
 }
 
 type Shipment struct {
-	ID          uint   `json:"id"`
-	UserID      uint   `json:"user_id"`
-	ClientID    uint   `json:"client_id"`
-	Description string `json:"description"`
-	Status      string `json:"status"`
-	Cost        string `json:"cost"`
+	ID          uint       `json:"id"`
+	UserID      uint       `json:"user_id"`
+	ClientID    uint       `json:"client_id"`
+	Description string     `json:"description"`
+	Status      string     `json:"status"`
+	Cost        string     `json:"cost"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+	DeletedAt   *time.Time `json:"deleted_at"`
 }
 
-var token string
+var username string
+var password string
 var userRole string
 
 func main() {
@@ -57,7 +66,13 @@ func showLoginWindow(a fyne.App) {
 		}
 
 		body, _ := json.Marshal(request)
-		resp, err := http.Post("http://localhost:8080/login", "application/json", bytes.NewBuffer(body))
+		req, err := http.NewRequest("POST", "http://localhost:8080/login", bytes.NewBuffer(body))
+		if err != nil {
+			fmt.Println("Error creating login request:", err)
+			errorLabel.SetText("Failed to create request: " + err.Error())
+			return
+		}
+		resp, err := httpClient.Do(req)
 		if err != nil {
 			fmt.Println("Error connecting to server:", err)
 			errorLabel.SetText("Failed to connect to server: " + err.Error())
@@ -66,9 +81,8 @@ func showLoginWindow(a fyne.App) {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			fmt.Println("Login failed with status:", resp.StatusCode)
 			bodyBytes, _ := io.ReadAll(resp.Body)
-			fmt.Println("Response body:", string(bodyBytes)) // Отладка тела ответа
+			fmt.Println("Login failed with status:", resp.StatusCode, "Body:", string(bodyBytes))
 			errorLabel.SetText("Invalid username or password")
 			return
 		}
@@ -80,20 +94,17 @@ func showLoginWindow(a fyne.App) {
 			return
 		}
 
-		token, ok := result["token"].(string)
-		if !ok {
-			fmt.Println("Token not found in response:", result)
-			errorLabel.SetText("Invalid server response")
-			return
-		}
-		userRole, ok = result["role"].(string)
+		role, ok := result["role"].(string)
 		if !ok {
 			fmt.Println("Role not found in response:", result)
 			errorLabel.SetText("Invalid server response")
 			return
 		}
 
-		fmt.Println("Login successful, token:", token, "role:", userRole) // Полный токен
+		username = usernameEntry.Text
+		password = passwordEntry.Text
+		userRole = role
+		fmt.Println("Login successful, username:", username, "role:", userRole)
 		w.Close()
 		showMainWindow(a)
 	})
@@ -105,16 +116,23 @@ func showLoginWindow(a fyne.App) {
 		}
 
 		body, _ := json.Marshal(request)
-		resp, err := http.Post("http://localhost:8080/register", "application/json", bytes.NewBuffer(body))
+		req, err := http.NewRequest("POST", "http://localhost:8080/register", bytes.NewBuffer(body))
 		if err != nil {
-			fmt.Println("Error connecting to server:", err) // Отладка в терминале
+			fmt.Println("Error creating register request:", err)
+			errorLabel.SetText("Failed to create request: " + err.Error())
+			return
+		}
+		resp, err := httpClient.Do(req)
+		if err != nil {
+			fmt.Println("Error connecting to server:", err)
 			errorLabel.SetText("Failed to connect to server: " + err.Error())
 			return
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusCreated {
-			fmt.Println("Registration failed with status:", resp.StatusCode) // Отладка в терминале
+			bodyBytes, _ := io.ReadAll(resp.Body)
+			fmt.Println("Registration failed with status:", resp.StatusCode, "Body:", string(bodyBytes))
 			errorLabel.SetText("Failed to register")
 			return
 		}
@@ -134,10 +152,10 @@ func showLoginWindow(a fyne.App) {
 	w.SetContent(content)
 	w.Show()
 }
+
 func showMainWindow(a fyne.App) {
 	fmt.Println("Entering showMainWindow, role:", userRole)
 	w := a.NewWindow("FreightMaster")
-	fmt.Println("Main window created")
 	w.Resize(fyne.NewSize(800, 600))
 
 	tabs := container.NewAppTabs(
@@ -152,232 +170,187 @@ func showMainWindow(a fyne.App) {
 	w.Show()
 	fmt.Println("Main window shown")
 }
+
 func createShipmentsTab() fyne.CanvasObject {
-	fmt.Println("Creating Shipments tab") // Отладка
-	shipmentsList := widget.NewList(
-		func() int {
-			shipments, err := getShipments()
-			if err != nil {
-				fmt.Println("Error getting shipments:", err) // Отладка
-				return 0
-			}
-			fmt.Println("Fetched shipments:", len(shipments)) // Отладка
-			return len(shipments)
-		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("")
-		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			shipments, err := getShipments()
-			if err != nil {
-				fmt.Println("Error getting shipments in list update:", err) // Отладка
-				return
-			}
-			o.(*widget.Label).SetText(fmt.Sprintf("ID: %d, Desc: %s, Status: %s, Cost: %s", shipments[i].ID, shipments[i].Description, shipments[i].Status, shipments[i].Cost))
-		},
-	)
-	fmt.Println("Shipments list created") // Отладка
-
-	descriptionEntry := widget.NewEntry()
-	descriptionEntry.SetPlaceHolder("Description")
-
-	statusEntry := widget.NewEntry()
-	statusEntry.SetPlaceHolder("Status")
-
-	costEntry := widget.NewEntry()
-	costEntry.SetPlaceHolder("Cost")
-
-	addButton := widget.NewButton("Add Shipment", func() {
-		shipment := Shipment{
-			Description: descriptionEntry.Text,
-			Status:      statusEntry.Text,
-			Cost:        costEntry.Text,
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Panic in createShipmentsTab:", r)
+			debug.PrintStack()
 		}
-		addShipment(shipment)
-		shipmentsList.Refresh()
-	})
-
-	if userRole != "admin" {
-		addButton.Disable()
+	}()
+	fmt.Println("Creating Shipments tab")
+	shipments, err := getShipments()
+	if err != nil {
+		fmt.Println("Error getting shipments:", err)
+		return widget.NewLabel("Error: " + err.Error())
 	}
-
-	content := container.NewVBox(
-		widget.NewLabel("Shipments"),
-		shipmentsList,
-		descriptionEntry,
-		statusEntry,
-		costEntry,
-		addButton,
-	)
-	fmt.Println("Shipments tab content created") // Отладка
-	return content
+	fmt.Println("Shipments fetched successfully:", len(shipments))
+	label := widget.NewLabel(fmt.Sprintf("Shipments: %d", len(shipments)))
+	fmt.Println("Label created with text:", label.Text)
+	return label
 }
 
 func createUsersTab() fyne.CanvasObject {
-	fmt.Println("Creating Users tab") // Отладка
-	usersList := widget.NewList(
-		func() int {
-			users, err := getUsers()
-			if err != nil {
-				fmt.Println("Error getting users:", err) // Отладка
-				return 0
-			}
-			fmt.Println("Fetched users:", len(users)) // Отладка
-			return len(users)
-		},
-		func() fyne.CanvasObject {
-			return widget.NewLabel("")
-		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			users, err := getUsers()
-			if err != nil {
-				fmt.Println("Error getting users in list update:", err) // Отладка
-				return
-			}
-			o.(*widget.Label).SetText(fmt.Sprintf("ID: %d, Username: %s, Role: %s", users[i].ID, users[i].Username, users[i].Role))
-		},
-	)
-	fmt.Println("Users list created") // Отладка
-
-	usernameEntry := widget.NewEntry()
-	usernameEntry.SetPlaceHolder("Username")
-
-	passwordEntry := widget.NewPasswordEntry()
-	passwordEntry.SetPlaceHolder("Password")
-
-	addButton := widget.NewButton("Add User", func() {
-		user := database.User{
-			Username: usernameEntry.Text,
-			Password: passwordEntry.Text,
-			Role:     "user",
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Panic in createUsersTab:", r)
+			debug.PrintStack()
 		}
-		addUser(user)
-		usersList.Refresh()
-	})
+	}()
+	fmt.Println("Creating Users tab")
 
-	if userRole != "admin" {
-		addButton.Disable()
-	}
+	// Создаём канал для получения данных
+	usersChan := make(chan []database.User)
+	errChan := make(chan error)
 
-	content := container.NewVBox(
-		widget.NewLabel("Users"),
-		usersList,
-		usernameEntry,
-		passwordEntry,
-		addButton,
-	)
-	fmt.Println("Users tab content created") // Отладка
-	return content
+	// Запускаем запрос в отдельной горутине
+	go func() {
+		users, err := getUsers()
+		if err != nil {
+			errChan <- err
+			return
+		}
+		usersChan <- users
+	}()
+
+	// Создаём временный лейбл
+	label := widget.NewLabel("Loading users...")
+
+	// Ожидаем результат
+	go func() {
+		select {
+		case users := <-usersChan:
+			fmt.Println("Users fetched successfully:", len(users))
+			label.SetText(fmt.Sprintf("Users: %d", len(users)))
+		case err := <-errChan:
+			fmt.Println("Error getting users:", err)
+			label.SetText("Error: " + err.Error())
+		}
+	}()
+
+	return label
 }
 
 func getShipments() ([]Shipment, error) {
-	fmt.Println("Sending GET request to /api/shipments with token:", token) // Полный токен
-	if token == "" {
-		fmt.Println("Token is empty!")
-		return nil, fmt.Errorf("token is empty")
-	}
-	req, err := http.NewRequest("GET", "http://localhost:8080/api/shipments", nil)
-	if err != nil {
-		fmt.Println("Error creating request:", err)
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		fmt.Println("Error sending request:", err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		fmt.Println("Unexpected status code:", resp.StatusCode, "Response body:", string(body)) // Отладка
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	var shipments []Shipment
-	if err := json.NewDecoder(resp.Body).Decode(&shipments); err != nil {
-		fmt.Println("Error decoding response:", err)
-		return nil, err
-	}
+	fmt.Println("Simulating GET request to /api/shipments")
+	shipments := []Shipment{}
+	fmt.Println("Successfully fetched shipments:", len(shipments))
 	return shipments, nil
 }
 
 func getUsers() ([]database.User, error) {
-	fmt.Println("Sending GET request to /api/users with token:", token) // Полный токен
-	if token == "" {
-		fmt.Println("Token is empty!")
-		return nil, fmt.Errorf("token is empty")
-	}
+	fmt.Println("Sending GET request to /api/users with username:", username, "password:", password)
 	req, err := http.NewRequest("GET", "http://localhost:8080/api/users", nil)
 	if err != nil {
 		fmt.Println("Error creating request:", err)
+		debug.PrintStack()
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	resp, err := http.DefaultClient.Do(req)
+	req.Header.Set("X-Username", username)
+	req.Header.Set("X-Password", password)
+	fmt.Println("Request headers set:", req.Header)
+
+	fmt.Println("About to execute httpClient.Do...")
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		fmt.Println("Error sending request:", err)
+		debug.PrintStack()
 		return nil, err
 	}
-	defer resp.Body.Close()
+	fmt.Println("httpClient.Do executed successfully")
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Panic during response handling:", r)
+			debug.PrintStack()
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}()
+
+	fmt.Println("Received response with status:", resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body:", err)
+		debug.PrintStack()
+		return nil, err
+	}
+	fmt.Println("Response body:", string(body))
+	resp.Body = io.NopCloser(bytes.NewBuffer(body))
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		fmt.Println("Unexpected status code:", resp.StatusCode, "Response body:", string(body)) // Отладка
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		fmt.Println("Unexpected status code:", resp.StatusCode, "Response body:", string(body))
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
 	}
 
 	var users []database.User
+	fmt.Println("Attempting to decode JSON...")
 	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
 		fmt.Println("Error decoding response:", err)
+		debug.PrintStack()
 		return nil, err
 	}
+	fmt.Println("Successfully fetched users:", len(users))
 	return users, nil
 }
 
-func readBody(resp *http.Response) string {
-	buf := new(bytes.Buffer)
-	buf.ReadFrom(resp.Body)
-	resp.Body.Close()
-	resp.Body = io.NopCloser(bytes.NewBuffer(buf.Bytes())) // Сбрасываем тело для повторного чтения
-	return buf.String()
-}
-
-func addShipment(shipment Shipment) {
-	fmt.Println("Adding shipment:", shipment) // Отладка
-	body, _ := json.Marshal(shipment)
+func addShipment(shipment Shipment) error {
+	fmt.Println("Adding shipment:", shipment)
+	body, err := json.Marshal(shipment)
+	if err != nil {
+		fmt.Println("Error marshaling shipment:", err)
+		return err
+	}
 	req, err := http.NewRequest("POST", "http://localhost:8080/admin/shipments", bytes.NewBuffer(body))
 	if err != nil {
-		fmt.Println("Error creating POST request:", err) // Отладка
-		return
+		fmt.Println("Error creating POST request:", err)
+		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Username", username)
+	req.Header.Set("X-Password", password)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		fmt.Println("Error sending POST request:", err) // Отладка
-		return
+		fmt.Println("Error sending POST request:", err)
+		return err
 	}
 	defer resp.Body.Close()
-	fmt.Println("Add shipment response status:", resp.StatusCode) // Отладка
+	fmt.Println("Add shipment response status:", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println("Unexpected status code:", resp.StatusCode, "Response body:", string(body))
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	return nil
 }
 
-func addUser(user database.User) {
+func addUser(user database.User) error {
 	fmt.Println("Adding user:", user.Username)
-	body, _ := json.Marshal(user)
+	body, err := json.Marshal(user)
+	if err != nil {
+		fmt.Println("Error marshaling user:", err)
+		return err
+	}
 	req, err := http.NewRequest("POST", "http://localhost:8080/admin/users", bytes.NewBuffer(body))
 	if err != nil {
-		fmt.Println("Error creating POST request:", err) // Отладка
-		return
+		fmt.Println("Error creating POST request:", err)
+		return err
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("X-Username", username)
+	req.Header.Set("X-Password", password)
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
-		fmt.Println("Error sending POST request:", err) // Отладка
-		return
+		fmt.Println("Error sending POST request:", err)
+		return err
 	}
 	defer resp.Body.Close()
-	fmt.Println("Add user response status:", resp.StatusCode) // Отладка
+	fmt.Println("Add user response status:", resp.StatusCode)
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		fmt.Println("Unexpected status code:", resp.StatusCode, "Response body:", string(body))
+		return fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+	return nil
 }
