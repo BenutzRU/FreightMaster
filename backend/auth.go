@@ -1,3 +1,4 @@
+// backend/auth.go
 package backend
 
 import (
@@ -9,7 +10,7 @@ import (
 )
 
 type AuthRequest struct {
-	Email    string `json:"email"`
+	Username string `json:"username"`
 	Password string `json:"password"`
 }
 
@@ -21,10 +22,8 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// Логируем запрос для отладки
-	fmt.Println("Получен запрос на регистрацию:", request.Email)
+	fmt.Println("Получен запрос на регистрацию:", request.Username)
 
-	// Хешируем пароль
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(request.Password), bcrypt.DefaultCost)
 	if err != nil {
 		fmt.Println("Ошибка хеширования пароля:", err)
@@ -33,12 +32,11 @@ func Register(c *gin.Context) {
 	}
 
 	user := database.User{
-		Email:    request.Email,
+		Username: request.Username,
 		Password: string(hashedPassword),
 		Role:     "user",
 	}
 
-	// Проверяем, нет ли уже такого пользователя
 	if err := database.DB.Create(&user).Error; err != nil {
 		fmt.Println("Ошибка при создании пользователя:", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при создании пользователя"})
@@ -57,16 +55,16 @@ func Login(c *gin.Context) {
 	}
 
 	var user database.User
-	if err := database.DB.Where("email = ?", request.Email).First(&user).Error; err != nil {
+	if err := database.DB.Where("username = ?", request.Username).First(&user).Error; err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Пользователь не найден"})
 		return
 	}
 
-	// Проверка пароля
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(request.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Неверный пароль"})
 		return
 	}
 
+	// Возвращаем только сообщение об успехе и роль, без токена
 	c.JSON(http.StatusOK, gin.H{"message": "Авторизация успешна", "role": user.Role})
 }

@@ -25,15 +25,17 @@ type AuthRequest struct {
 }
 
 type Shipment struct {
-	ID          uint       `json:"id"`
-	UserID      uint       `json:"user_id"`
-	ClientID    uint       `json:"client_id"`
-	Description string     `json:"description"`
-	Status      string     `json:"status"`
-	Cost        string     `json:"cost"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	DeletedAt   *time.Time `json:"deleted_at"`
+	ID               uint       `json:"id"`
+	UserID           uint       `json:"user_id"`
+	ClientID         uint       `json:"client_id"`
+	Description      string     `json:"description"`
+	Status           string     `json:"status"`
+	Cost             float64    `json:"cost"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
+	DeletedAt        *time.Time `json:"deleted_at"`
+	DeliveryMethodID uint       `json:"delivery_method_id"`
+	BranchID         uint       `json:"branch_id"`
 }
 
 var username string
@@ -231,9 +233,60 @@ func createUsersTab() fyne.CanvasObject {
 	return label
 }
 
+// gui/main.go (обновлённая функция getShipments)
 func getShipments() ([]Shipment, error) {
-	fmt.Println("Simulating GET request to /api/shipments")
-	shipments := []Shipment{}
+	fmt.Println("Sending GET request to /api/shipments with username:", username, "password:", password)
+	req, err := http.NewRequest("GET", "http://localhost:8080/api/shipments", nil)
+	if err != nil {
+		fmt.Println("Error creating request:", err)
+		debug.PrintStack()
+		return nil, err
+	}
+	req.Header.Set("X-Username", username)
+	req.Header.Set("X-Password", password)
+	fmt.Println("Request headers set:", req.Header)
+
+	fmt.Println("About to execute httpClient.Do...")
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		fmt.Println("Error sending request:", err)
+		debug.PrintStack()
+		return nil, err
+	}
+	fmt.Println("httpClient.Do executed successfully")
+
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Println("Panic during response handling:", r)
+			debug.PrintStack()
+		}
+		if resp != nil {
+			resp.Body.Close()
+		}
+	}()
+
+	fmt.Println("Received response with status:", resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("Error reading response body:", err)
+		debug.PrintStack()
+		return nil, err
+	}
+	fmt.Println("Response body:", string(body))
+	resp.Body = io.NopCloser(bytes.NewBuffer(body))
+
+	if resp.StatusCode != http.StatusOK {
+		fmt.Println("Unexpected status code:", resp.StatusCode, "Response body:", string(body))
+		return nil, fmt.Errorf("unexpected status code: %d, body: %s", resp.StatusCode, string(body))
+	}
+
+	var shipments []Shipment
+	fmt.Println("Attempting to decode JSON...")
+	if err := json.NewDecoder(resp.Body).Decode(&shipments); err != nil {
+		fmt.Println("Error decoding response:", err)
+		debug.PrintStack()
+		return nil, err
+	}
 	fmt.Println("Successfully fetched shipments:", len(shipments))
 	return shipments, nil
 }
